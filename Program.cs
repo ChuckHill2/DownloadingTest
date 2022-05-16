@@ -42,32 +42,52 @@ namespace DownloadingTest
         {
             Log.SeverityFilter = Severity.Verbose;
 
-            TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Http);
-            TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Http);
-            TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Http);
-            TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Http, useNullFilename:true);
-            TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Http);
+            //TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Http);
+            //TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Http);
+            //TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Http);
+            //TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Http, useNullFilename:true);
+            //TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Http);
 
-            TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Web);
-            TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Web);
-            TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Web);
-            TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Web, useNullFilename: true);
-            TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Web);
+            //TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Web);
+            //TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Web);
+            //TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Web);
+            //TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Web, useNullFilename: true);
+            //TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Web);
 
-            TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Sync);
-            TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Sync);
-            TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Sync);
-            TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Sync, useNullFilename: true);  //missing filename not supported
-            TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Sync);
+            //TestDownload.TestOne("https://github.com/search?l=C%23&q=base64+stream&type=Repositories", DownloaderType.Sync);
+            //TestDownload.TestOne("https://www.imdb.com/title/tt11947264/", DownloaderType.Sync);
+            //TestDownload.TestOne("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png", DownloaderType.Sync);
+            //TestDownload.TestOne("https://support.avantree.com/", DownloaderType.Sync, useNullFilename: true);  //missing filename not supported
+            //TestDownload.TestOne("http://capture2text.sourceforge.net/", DownloaderType.Sync);
 
-            TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Http, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
-            TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Http, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Http, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Http, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
 
-            TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Web, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
-            TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Web, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Web, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Web, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
 
-            TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Sync, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
-            TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Sync, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.ImdbUrls, DownloaderType.Sync, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //TestDownload.TestMany(DownloadTest.SelectUrls, DownloaderType.Sync, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+
+            Console.WriteLine("[Begin Test]");
+
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Http, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Web, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Sync, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Legacy, maxDegreeOfParallelism: int.MaxValue, urlCount: 40, doRetry: false);
+
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Http, maxDegreeOfParallelism: 1, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Web, maxDegreeOfParallelism: 1, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Sync, maxDegreeOfParallelism: 1, urlCount: 40, doRetry: false);
+            //System.Threading.Thread.Sleep(5 * 60 * 1000);
+            //TestDownload.TestMany(DownloadTest.ImdbAndImageUrls, DownloaderType.Legacy, maxDegreeOfParallelism: 1, urlCount: 40, doRetry: false);
+
+            Console.WriteLine("[Complete]");
         }
     }
 }

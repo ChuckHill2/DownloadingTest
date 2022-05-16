@@ -33,6 +33,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Win32;
 
 namespace DownloadingTest
 {
@@ -213,5 +214,93 @@ namespace DownloadingTest
             CloseHandle(hFile);
             return success;
         }
+
+        public static void SetFileDateTime(string filename, DateTime dt)
+        {
+            var filetime = dt.ToFileTime();
+            FileEx.SetFileTime(filename, filetime, filetime, filetime);
+        }
+
+        public static string GetDefaultExtension(string mimeType, string defalt)
+        {
+            if (string.IsNullOrEmpty(mimeType)) return defalt;
+            mimeType = mimeType.Split(';')[0].Trim(); //"text/html; charset=UTF-8"
+            string ext = null;
+            try { ext = Registry.GetValue(@"HKEY_CLASSES_ROOT\MIME\Database\Content Type\" + mimeType, "Extension", string.Empty)?.ToString(); }
+            catch { }
+            if (string.IsNullOrEmpty(ext)) return defalt; //If all else fails, we assume the caller is correct.
+
+            if (ext == ".html") ext = ".htm";  //Override registry mimetypes. We like the legacy extensions.
+            if (ext == ".jfif") ext = ".jpg";
+
+            return ext;
+        }
+
+        private static string GetFullPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+            try
+            {
+                return Path.GetFullPath(path);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static readonly Object GetUniqueFilename_Lock = new Object();  //used exclusively by GetUniqueFilename()
+        public static string GetUniqueFilename(string srcFilename)
+        {
+            // Securely find an unused filename in a multi-threaded environment.
+
+            srcFilename = GetFullPath(srcFilename);
+            if (string.IsNullOrEmpty(srcFilename)) return null;
+
+            string pathFormat = null;
+            string newFilename = srcFilename;
+            int index = 1;
+
+            lock (GetUniqueFilename_Lock)
+            {
+                string dir = Path.GetDirectoryName(srcFilename);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                while (File.Exists(newFilename))
+                {
+                    if (pathFormat == null)
+                    {
+                        string path = Path.Combine(dir, Path.GetFileNameWithoutExtension(srcFilename));
+                        if (path[path.Length - 1] == ')')
+                        {
+                            int i = path.LastIndexOf('(');
+                            if (i > 0) path = path.Substring(0, i);
+                        }
+                        pathFormat = path + "({0:00})" + Path.GetExtension(srcFilename);
+                    }
+                    newFilename = string.Format(pathFormat, index++);
+                }
+
+                File.Create(newFilename).Dispose();  //create place-holder file.
+            }
+
+            return newFilename;
+        }
+
+        public static string ValidateUri(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return null;
+            try
+            {
+                var uri = new Uri(url);
+                return uri.AbsoluteUri;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
     }
 }

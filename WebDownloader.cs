@@ -41,7 +41,8 @@ using Microsoft.Win32;
 namespace DownloadingTest
 {
     /// <summary>
-    /// Legacy Http Data downloader. This is not thread-safe. Use once and dispose.
+    /// Data downloader. This is not thread-safe. Use once and dispose.
+    /// Exception: NotSupportedException:WebClient does not support concurrent I/O operations.
     /// </summary>
     public class WebDownloader : IDisposable
     {
@@ -137,7 +138,7 @@ namespace DownloadingTest
                     {
                         if (job.FailureCount <= 1)
                         {
-                            LogWrite(Severity.Warning, "{0}{1}: Retry {2}", JobNumberMsg(job), ResponseStatusMsg(webStatus, httpStatus), Url2FilenameMsg(job));
+                            LogWrite(Severity.Warning, "{0}{1}: Retry {2}", JobNumberMsg(job), DownloadStatus(webStatus, httpStatus), Url2FilenameMsg(job));
                             Thread.Sleep(2000);
                             retry--;
                             continue;
@@ -145,9 +146,9 @@ namespace DownloadingTest
                     }
 
                     #if DEBUG
-                        LogWrite(Severity.Error, "{0}{1} {2}\r\n{3}", JobNumberMsg(job), ResponseStatusMsg(webStatus, httpStatus), ex, Url2FilenameMsg(job));
+                        LogWrite(Severity.Error, "{0}{1} {2}\r\n{3}", JobNumberMsg(job), DownloadStatus(webStatus, httpStatus), ex, Url2FilenameMsg(job));
                     #else
-                        LogWrite(Severity.Error, "{0}{1}{2}:{3} : {4}", JobNumberMsg(job), ResponseStatusMsg(webStatus, httpStatus), ex.GetType().Name, ex.Message, Url2FilenameMsg(job));
+                        LogWrite(Severity.Error, "{0}{1}{2}:{3} : {4}", JobNumberMsg(job), DownloadStatus(webStatus, httpStatus), ex.GetType().Name, ex.Message, Url2FilenameMsg(job));
                     #endif
                 }
             }
@@ -162,7 +163,7 @@ namespace DownloadingTest
             if (!string.IsNullOrEmpty(job.Referer)) Client.Headers[HttpRequestHeader.Referer] = job.Referer;
             if (!string.IsNullOrEmpty(job.Cookie)) Client.Headers[HttpRequestHeader.Cookie] = job.Cookie;
             Client.Headers[HttpRequestHeader.AcceptLanguage] = "en-US,en;q=0.5"; //always set language to english so our web scraper only has to deal with only a single language.
-            job.Filename = GetUniqueFilename(job.Filename); //creates empty file as placeholder
+            job.Filename = FileEx.GetUniqueFilename(job.Filename); //creates empty file as placeholder
 
             if (job.Filename != null)
                 await Client.DownloadFileTaskAsync(job.Url, job.Filename); //This will throw an exception if the url cannot be downloaded.
@@ -177,7 +178,7 @@ namespace DownloadingTest
                 !DateTime.TryParse(Client.ResponseHeaders[HttpResponseHeader.Date] ?? string.Empty, out lastModified) ? 
                 DateTime.Now : lastModified : lastModified);
 
-            SetJobMimeType(job, GetMimeType(out var charset));
+            SetJobMimeType(job, GetMimeType(Client, out var charset));
             int contentLength = int.TryParse(Client.ResponseHeaders[HttpResponseHeader.ContentLength], out var __contentLength) ? __contentLength : 0;
 
             if (job.Filename == null)
@@ -213,36 +214,50 @@ namespace DownloadingTest
                 //Adjust extension to reflect true filetype, BUT make sure that new filename does not exist.
 
                 var oldExt = Path.GetExtension(job.Filename);
-                var newExt = GetDefaultExtension(job.MimeType, oldExt);
+                var newExt = FileEx.GetDefaultExtension(job.MimeType, oldExt);
                 if (!oldExt.Equals(newExt, StringComparison.OrdinalIgnoreCase))
                 {
                     var newfilename = Path.ChangeExtension(job.Filename, newExt);
-                    newfilename = GetUniqueFilename(newfilename); //creates empty file as placeholder
+                    newfilename = FileEx.GetUniqueFilename(newfilename); //creates empty file as placeholder
                     FileEx.Delete(newfilename); //delete the placeholder. Move will throw exception if it already exists
                     FileEx.Move(job.Filename, newfilename);
                     job.Filename = newfilename; //return new filename to caller.
                 }
 
-                SetFileDate(job.Filename, job.LastModified);
+                FileEx.SetFileDateTime(job.Filename, job.LastModified);
             }
         }
 
-        #region Log.Write message formatted fragments
-        private string ResponseStatusMsg(WebExceptionStatus webStatus, HttpStatusCode httpStatus)
+        private static string GetMimeType(WebClient client, out string charset)
         {
-            if (LogWriter == null) return string.Empty;
-            string webStatusName = null;
-            string httpStatusName = null;
-
-            if (webStatus != 0) webStatusName = string.Concat(webStatus.ToString(), "(", ((int)webStatus).ToString(), ")");
-            if (httpStatus != 0) httpStatusName = string.Concat((httpStatus==(HttpStatusCode)308 ? "PermanentRedirect" : httpStatus.ToString()), "(", ((int)httpStatus).ToString(), ")");
-
-            if (webStatusName == null && httpStatusName == null) return string.Empty;
-            if (webStatusName != null && httpStatusName == null) return webStatusName + ": ";
-            if (webStatusName == null && httpStatusName != null) return httpStatusName + ": ";
-            if (webStatusName != null && httpStatusName != null) return string.Concat(webStatusName, "/", httpStatusName, ": ");
-            return string.Empty;
+            charset = null;
+            var contentType = client.ResponseHeaders[HttpResponseHeader.ContentType]; //"text/html; charset=UTF-8"
+            if (string.IsNullOrEmpty(contentType)) return null;
+            var items = contentType.Split(new char[] { ';', ' ', '=' }, StringSplitOptions.RemoveEmptyEntries);
+            if (items.Length > 2 && items[1].Equals("charset", StringComparison.OrdinalIgnoreCase)) charset = items[2];
+            return items[0];
         }
+
+        #region Private Job Setters
+        // Only *We* are allowed to set these Job values.
+
+        //private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
+        private static void IncrementJobFailureCount(Job job) => job.FailureCount++; // jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
+
+        //private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
+        private static void SetJobUrl(Job job, string url) => job.Url = url; // jobUrl.Invoke(job, new object[] { url });
+
+        //private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
+        private static void SetJobMimeType(Job job, string mimetype) => job.MimeType = mimetype; // jobMimeType.Invoke(job, new object[] { mimetype });
+
+        //private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
+        private static void SetJobLastModified(Job job, DateTime lastModified) => job.LastModified = lastModified; // jobLastModified.Invoke(job, new object[] { lastModified });
+
+        //private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
+        private static void SetJobException(Job job, Exception exception) => job.Exception = exception; // jobException.Invoke(job, new object[] { exception });
+        #endregion
+
+        #region Log.Write message formatted fragments
         private string JobNumberMsg(Job job)
         {
             if (LogWriter == null) return string.Empty;
@@ -261,92 +276,21 @@ namespace DownloadingTest
             if (s.Length <= maxLen) return s;
             return "\x2026" + s.Substring(s.Length - maxLen, maxLen);
         }
-        #endregion
 
-        private static string GetDefaultExtension(string mimeType, string defalt) //used exclusively by Download()
+        private string DownloadStatus(WebExceptionStatus webStatus, HttpStatusCode httpStatus)
         {
-            if (string.IsNullOrEmpty(mimeType)) return defalt;
-            mimeType = mimeType.Split(';')[0].Trim();
-            string ext;
-            try { ext = Registry.GetValue(@"HKEY_CLASSES_ROOT\MIME\Database\Content Type\" + mimeType, "Extension", string.Empty).ToString(); }
-            catch { ext = defalt; }
-
-            if (ext == ".html") ext = ".htm";  //Override registry mimetypes. We like the legacy extensions.
-            if (ext == ".jfif") ext = ".jpg";
-
-            return ext;
-        }
-
-        private static readonly Object GetUniqueFilename_Lock = new Object();  //used exclusively by FileEx.GetUniqueFilename()
-        private static string GetUniqueFilename(string srcFilename) //find an unused filename
-        {
-            // Securely find an unused filename in a multi-threaded environment.
-
-            if (string.IsNullOrEmpty(srcFilename)) return null;
-
-            string pathFormat = null;
-            string newFilename = srcFilename;
-            int index = 1;
-
-            lock (GetUniqueFilename_Lock)
+            if (LogWriter == null) return string.Empty;
+            var sb = new StringBuilder();
+            if (webStatus != 0) sb.Append(webStatus);
+            if (httpStatus != 0)
             {
-                string dir = Path.GetDirectoryName(srcFilename);
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-                while (FileEx.Exists(newFilename))
-                {
-                    if (pathFormat == null)
-                    {
-                        string path = Path.Combine(dir, Path.GetFileNameWithoutExtension(srcFilename));
-                        if (path[path.Length - 1] == ')')
-                        {
-                            int i = path.LastIndexOf('(');
-                            if (i > 0) path = path.Substring(0, i);
-                        }
-                        pathFormat = path + "({0:00})" + Path.GetExtension(srcFilename);
-                    }
-                    newFilename = string.Format(pathFormat, index++);
-                }
-
-                File.Create(newFilename).Dispose();  //create place-holder file.
+                if (sb.Length > 0) sb.Append("/");
+                var desc = (int)httpStatus == 308 ? "PermenentRedirect" : httpStatus.ToString();
+                sb.Append($"{desc}({(int)httpStatus})");
             }
 
-            return newFilename;
+            return sb.ToString();
         }
-
-        private static void SetFileDate(string filename, DateTime dt)
-        {
-            var filetime = dt.ToFileTime();
-            FileEx.SetFileTime(filename, filetime, filetime, filetime);
-        }
-
-        private string GetMimeType(out string charset)
-        {
-            charset = null;
-            var contentType = Client.ResponseHeaders[HttpResponseHeader.ContentType]; //"text/html; charset=UTF-8"
-            if (string.IsNullOrEmpty(contentType)) return null;
-            var items = contentType.Split(new char[] { ';', ' ','=' }, StringSplitOptions.RemoveEmptyEntries);
-            charset = items?[2];
-            return items?[0];
-        }
-
-        #region Private Job Setters
-        // Only *We* are allowed to set these Job values.
-
-        private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
-        private static void IncrementJobFailureCount(Job job) => jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
-
-        private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
-        private static void SetJobUrl(Job job, string url) => jobUrl.Invoke(job, new object[] { url });
-
-        private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
-        private static void SetJobMimeType(Job job, string mimetype) => jobMimeType.Invoke(job, new object[] { mimetype });
-
-        private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
-        private static void SetJobLastModified(Job job, DateTime lastModified) => jobLastModified.Invoke(job, new object[] { lastModified });
-
-        private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
-        private static void SetJobException(Job job, Exception exception) => jobException.Invoke(job, new object[] { exception });
         #endregion
 
         private class MyWebClient : WebClient

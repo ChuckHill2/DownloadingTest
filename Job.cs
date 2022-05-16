@@ -40,7 +40,7 @@ namespace DownloadingTest
         /// Readonly failure  counter. This counter is incremented every time the download fails.
         /// The user can re-download this job based upon the exception properties and other stateful information. The failure  counter can also tell you when to quit retrying.
         /// </summary>
-        public int FailureCount { get; private set; } = 0;
+        public int FailureCount { get; set; } = 0;
 
         /// <summary>
         /// This is just a job sequence identifier for batch/parallel debugging. Used for writing to Log.
@@ -70,7 +70,7 @@ namespace DownloadingTest
         /// URI of the Internet resource that actually responded to the request (e.g. redirect).
         /// This readonly value must be provided in the constructor.
         /// </summary>
-        public string Url { get; private set; }
+        public string Url { get; set; }
 
         /// <summary>
         ///   Full path name of file to write result to.
@@ -85,17 +85,17 @@ namespace DownloadingTest
         /// Readonly. Upon output, the content type of the result. 
         /// Useful when Filename is null and the Body contains base64 binary data.
         /// </summary>
-        public string MimeType { get; private set; }
+        public string MimeType { get; set; }
 
         /// <summary>
         /// The datetime of the resource on the server.
         /// </summary>
-        public DateTime LastModified { get; private set; }
+        public DateTime LastModified { get; set; }
 
         /// <summary>
         /// The exception upon failure.
         /// </summary>
-        public Exception Exception { get; private set; }
+        public Exception Exception { get; set; }
 
         /// <summary>
         /// Constructor to populate this object

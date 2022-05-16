@@ -342,8 +342,7 @@ namespace DownloadingTest
 
                 SetJobMimeType(job, response.Content.Headers.ContentType?.MediaType);
                 string charset = response.Content.Headers.ContentType?.CharSet; //e.g. "utf-8" or null for binary data
-                job.Filename = GetFullPath(job.Filename);       //validate filename
-                job.Filename = GetUniqueFilename(job.Filename); //creates empty file as placeholder
+                job.Filename = FileEx.GetUniqueFilename(job.Filename); //creates empty file as placeholder
                 if (job.Filename == null)
                 {
                     if (charset==null) //string field cannot have binary data
@@ -378,17 +377,17 @@ namespace DownloadingTest
 
                     //Adjust extension to reflect true filetype, BUT make sure that new filename does not exist.
                     var oldExt = Path.GetExtension(job.Filename);
-                    var newExt = GetDefaultExtension(job.MimeType, oldExt);
+                    var newExt = FileEx.GetDefaultExtension(job.MimeType, oldExt);
                     if (!newExt.Equals(oldExt,StringComparison.InvariantCultureIgnoreCase))
                     {
                         var newfilename = Path.ChangeExtension(job.Filename, newExt);
-                        newfilename = GetUniqueFilename(newfilename); //creates empty file as placeholder
+                        newfilename = FileEx.GetUniqueFilename(newfilename); //creates empty file as placeholder
                         FileEx.Delete(newfilename); //delete the placeholder. Move will throw exception if it already exists
                         FileEx.Move(job.Filename, newfilename);
                         job.Filename = newfilename; //return new filename to caller.
                     }
 
-                    SetFileDate(job.Filename, job.LastModified);
+                    FileEx.SetFileDateTime(job.Filename, job.LastModified);
                 }
             }
             finally
@@ -397,25 +396,6 @@ namespace DownloadingTest
                 request?.Dispose();
             }
         }
-
-        #region Private Job Setters
-        // Only *We* are allowed to set these Job values.
-
-        private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
-        private static void IncrementJobFailureCount(Job job) => jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
-
-        private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
-        private static void SetJobUrl(Job job, string url) => jobUrl.Invoke(job, new object[] { url });
-
-        private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
-        private static void SetJobMimeType(Job job, string mimetype) => jobMimeType.Invoke(job, new object[] { mimetype });
-
-        private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
-        private static void SetJobLastModified(Job job, DateTime lastModified) => jobLastModified.Invoke(job, new object[] { lastModified });
-
-        private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
-        private static void SetJobException(Job job, Exception exception) => jobException.Invoke(job, new object[] { exception });
-        #endregion
 
         private string GetCookie(HttpResponseMessage response)
         {
@@ -455,81 +435,24 @@ namespace DownloadingTest
                    DateTime.Now;
         }
 
-        private static string GetDefaultExtension(string mimeType, string defalt)
-        { 
-            if (string.IsNullOrEmpty(mimeType)) return defalt;
-            mimeType = mimeType.Split(';')[0].Trim(); //"text/html; charset=UTF-8"
-            string ext = null;
-            try { ext = Registry.GetValue(@"HKEY_CLASSES_ROOT\MIME\Database\Content Type\" + mimeType, "Extension", string.Empty)?.ToString(); }
-            catch {}
-            if (string.IsNullOrEmpty(ext)) return defalt; //If all else fails, we assume the caller is correct.
+        #region Private Job Setters
+        // Only *We* are allowed to set these Job values.
 
-            if (ext == ".html") ext = ".htm";  //Override registry mimetypes. We like the legacy extensions.
-            if (ext == ".jfif") ext = ".jpg";
+        //private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
+        private static void IncrementJobFailureCount(Job job) => job.FailureCount++; // jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
 
-            return ext;
-        }
+        //private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
+        private static void SetJobUrl(Job job, string url) => job.Url = url; // jobUrl.Invoke(job, new object[] { url });
 
-        private static readonly Object GetUniqueFilename_Lock = new Object();  //used exclusively by GetUniqueFilename()
-        private static string GetUniqueFilename(string srcFilename)
-        {
-            // Securely find an unused filename in a multi-threaded environment.
+        //private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
+        private static void SetJobMimeType(Job job, string mimetype) => job.MimeType = mimetype; // jobMimeType.Invoke(job, new object[] { mimetype });
 
-            if (string.IsNullOrEmpty(srcFilename)) return null;
+        //private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
+        private static void SetJobLastModified(Job job, DateTime lastModified) => job.LastModified = lastModified; // jobLastModified.Invoke(job, new object[] { lastModified });
 
-            string pathFormat = null;
-            string newFilename = srcFilename;
-            int index = 1;
-
-            lock (GetUniqueFilename_Lock)
-            {
-                string dir = Path.GetDirectoryName(srcFilename);
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-                while (File.Exists(newFilename))
-                {
-                    if (pathFormat == null)
-                    {
-                        string path = Path.Combine(dir, Path.GetFileNameWithoutExtension(srcFilename));
-                        if (path[path.Length - 1] == ')')
-                        {
-                            int i = path.LastIndexOf('(');
-                            if (i > 0) path = path.Substring(0, i);
-                        }
-                        pathFormat = path + "({0:00})" + Path.GetExtension(srcFilename);
-                    }
-                    newFilename = string.Format(pathFormat, index++);
-                }
-
-                File.Create(newFilename).Dispose();  //create place-holder file.
-            }
-
-            return newFilename;
-        }
-
-        private static void SetFileDate(string filename, DateTime dt)
-        {
-            var filetime = dt.ToFileTime();
-            FileEx.SetFileTime(filename, filetime, filetime, filetime);
-        }
-
-        /// <summary>
-        /// Return valid full path name or null if invalid. File does not need to exist.
-        /// </summary>
-        /// <param name="path">path name to test</param>
-        /// <returns>full path name or null if invalid</returns>
-        private static string GetFullPath(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return null;
-            try
-            {
-                return Path.GetFullPath(path);
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        //private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
+        private static void SetJobException(Job job, Exception exception) => job.Exception = exception; // jobException.Invoke(job, new object[] { exception });
+        #endregion
 
         #region Log.Write message formatted fragments
         private string JobNumberMsg(Job job)

@@ -181,9 +181,9 @@ namespace DownloadingTest
 
         private static void DownloadThrow(Job job)
         {
-            var filename = GetUniqueFilename(GetFullPath(job.Filename));
+            var filename = FileEx.GetUniqueFilename(job.Filename);
             if (filename == null) throw new ArgumentNullException(nameof(Job.Filename), "Must be a valid filename");
-            if (ValidateUri(job.Url) == null) throw new ArgumentNullException(nameof(Job.Url), "Must be a valid http url");
+            if (FileEx.ValidateUri(job.Url) == null) throw new ArgumentNullException(nameof(Job.Url), "Must be a valid http url");
             job.Filename = filename;
 
             using (var client = new MyWebClient())
@@ -212,34 +212,49 @@ namespace DownloadingTest
 
             //Adjust extension to reflect true filetype, BUT make sure that new filename does not exist.
             var oldExt = Path.GetExtension(job.Filename);
-            var newExt = GetDefaultExtension(job.MimeType, oldExt);
+            var newExt = FileEx.GetDefaultExtension(job.MimeType, oldExt);
             if (!oldExt.Equals(newExt, StringComparison.OrdinalIgnoreCase))
             {
                 var newfilename = Path.ChangeExtension(job.Filename, newExt);
-                newfilename = GetUniqueFilename(newfilename); //creates empty file as placeholder
+                newfilename = FileEx.GetUniqueFilename(newfilename); //creates empty file as placeholder
                 FileEx.Delete(newfilename); //delete the placeholder. Move will throw exception if it already exists
                 FileEx.Move(job.Filename, newfilename);
                 job.Filename = newfilename; //return new filename to caller.
             }
 
-            SetFileDate(job.Filename, job.LastModified);
+            FileEx.SetFileDateTime(job.Filename, job.LastModified);
         }
+
+        private static string GetMimeType(WebClient client, out string charset)
+        {
+            charset = null;
+            var contentType = client.ResponseHeaders[HttpResponseHeader.ContentType]; //"text/html; charset=UTF-8"
+            if (string.IsNullOrEmpty(contentType)) return null;
+            var items = contentType.Split(new char[] { ';', ' ', '=' }, StringSplitOptions.RemoveEmptyEntries);
+            if (items.Length > 2 && items[1].Equals("charset", StringComparison.OrdinalIgnoreCase)) charset = items[2];
+            return items[0];
+        }
+
+        #region Private Job Setters
+        // Only *We* are allowed to set these Job values.
+
+        //private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
+        private static void IncrementJobFailureCount(Job job) => job.FailureCount++; // jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
+
+        //private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
+        private static void SetJobUrl(Job job, string url) => job.Url = url; // jobUrl.Invoke(job, new object[] { url });
+
+        //private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
+        private static void SetJobMimeType(Job job, string mimetype) => job.MimeType = mimetype; // jobMimeType.Invoke(job, new object[] { mimetype });
+
+        //private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
+        private static void SetJobLastModified(Job job, DateTime lastModified) => job.LastModified = lastModified; // jobLastModified.Invoke(job, new object[] { lastModified });
+
+        //private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
+        private static void SetJobException(Job job, Exception exception) => job.Exception = exception; // jobException.Invoke(job, new object[] { exception });
+        #endregion
 
         #region LogWrite formatted message fragments
-        private static string DownloadStatus(WebExceptionStatus webStatus, HttpStatusCode httpStatus)
-        {
-            if (LogWriter == null) return string.Empty;
-            var sb = new StringBuilder();
-            if (webStatus != 0) sb.Append(webStatus);
-            if (httpStatus != 0)
-            {
-                if (sb.Length > 0) sb.Append("/");
-                var desc = (int)httpStatus == 308 ? "PermenentRedirect" : httpStatus.ToString();
-                sb.Append($"{desc}({(int)httpStatus})");
-            }
-
-            return sb.ToString();
-        }
         private static string JobNumberMsg(Job job)
         {
             if (LogWriter == null) return string.Empty;
@@ -258,130 +273,21 @@ namespace DownloadingTest
             if (s.Length <= maxLen) return s;
             return "\x2026" + s.Substring(s.Length - maxLen, maxLen);
         }
-        #endregion
 
-        private static string GetDefaultExtension(string mimeType, string defalt)
+        private static string DownloadStatus(WebExceptionStatus webStatus, HttpStatusCode httpStatus)
         {
-            if (string.IsNullOrEmpty(mimeType)) return defalt;
-            mimeType = mimeType.Split(';')[0].Trim();
-            string ext = null;
-            try { ext = Registry.GetValue(@"HKEY_CLASSES_ROOT\MIME\Database\Content Type\" + mimeType, "Extension", string.Empty)?.ToString(); } catch { }
-            if (string.IsNullOrEmpty(ext)) ext = defalt;
-
-            if (ext == ".html") ext = ".htm";  //Override registry mimetypes. We like the legacy extensions.
-            if (ext == ".jfif") ext = ".jpg";
-
-            return ext;
-        }
-
-        private static string ValidateUri(string url)
-        {
-            if (string.IsNullOrEmpty(url)) return null;
-            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return null;
-            try
+            if (LogWriter == null) return string.Empty;
+            var sb = new StringBuilder();
+            if (webStatus != 0) sb.Append(webStatus);
+            if (httpStatus != 0)
             {
-                var uri = new Uri(url);
-                return uri.AbsoluteUri;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Return valid full path name or null if invalid. File does not need to exist.
-        /// </summary>
-        /// <param name="path">path name to test</param>
-        /// <returns>full path name or null if invalid</returns>
-        private static string GetFullPath(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return null;
-            try
-            {
-                return Path.GetFullPath(path);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static readonly Object GetUniqueFilename_Lock = new Object();  //used exclusively by FileEx.GetUniqueFilename()
-        private static string GetUniqueFilename(string srcFilename) //find an unused filename
-        {
-            // Securely find an unused filename in a multi-threaded environment.
-
-            if (string.IsNullOrEmpty(srcFilename)) return null;
-
-            string pathFormat = null;
-            string newFilename = srcFilename;
-            int index = 1;
-
-            lock (GetUniqueFilename_Lock)
-            {
-                string dir = Path.GetDirectoryName(srcFilename);
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-                while (FileEx.Exists(newFilename))
-                {
-                    if (pathFormat == null)
-                    {
-                        string path = Path.Combine(dir, Path.GetFileNameWithoutExtension(srcFilename));
-                        if (path[path.Length - 1] == ')')
-                        {
-                            int i = path.LastIndexOf('(');
-                            if (i > 0) path = path.Substring(0, i);
-                        }
-                        pathFormat = path + "({0:00})" + Path.GetExtension(srcFilename);
-                    }
-                    newFilename = string.Format(pathFormat, index++);
-                }
-
-                File.Create(newFilename).Dispose();  //create place-holder file.
+                if (sb.Length > 0) sb.Append("/");
+                var desc = (int)httpStatus == 308 ? "PermenentRedirect" : httpStatus.ToString();
+                sb.Append($"{desc}({(int)httpStatus})");
             }
 
-            return newFilename;
+            return sb.ToString();
         }
-
-        private static string GetMimeType(WebClient client, out string charset)
-        {
-            charset = null;
-            var contentType = client.ResponseHeaders[HttpResponseHeader.ContentType]; //"text/html; charset=UTF-8"
-            if (string.IsNullOrEmpty(contentType)) return null;
-            var items = contentType.Split(new char[] { ';', ' ', '=' }, StringSplitOptions.RemoveEmptyEntries);
-            if (items.Length > 2 && items[1].Equals("charset", StringComparison.OrdinalIgnoreCase)) charset = items[2];
-            return items[0];
-        }
-
-        private static void SetFileDate(string filename, DateTime dt)
-        {
-            // The official .NET api are much slower because we are doing the same operation 3 times
-            // File.SetCreationTime(filename, dt);
-            // File.SetLastAccessTime(filename, dt);
-            // File.SetLastWriteTime(filename, dt);
-
-            var filetime = dt.ToFileTime();
-            FileEx.SetFileTime(filename, filetime, filetime, filetime);
-        }
-
-        #region Private Job Setters
-        // Only *We* are allowed to set these Job values.
-
-        private static readonly MethodInfo jobRetry = typeof(Job).GetProperty("FailureCount").GetSetMethod(true);
-        private static void IncrementJobFailureCount(Job job) => jobRetry.Invoke(job, new object[] { job.FailureCount + 1 });
-
-        private static readonly MethodInfo jobUrl = typeof(Job).GetProperty("Url").GetSetMethod(true);
-        private static void SetJobUrl(Job job, string url) => jobUrl.Invoke(job, new object[] { url });
-
-        private static readonly MethodInfo jobMimeType = typeof(Job).GetProperty("MimeType").GetSetMethod(true);
-        private static void SetJobMimeType(Job job, string mimetype) => jobMimeType.Invoke(job, new object[] { mimetype });
-
-        private static readonly MethodInfo jobLastModified = typeof(Job).GetProperty("LastModified").GetSetMethod(true);
-        private static void SetJobLastModified(Job job, DateTime lastModified) => jobLastModified.Invoke(job, new object[] { lastModified });
-
-        private static readonly MethodInfo jobException = typeof(Job).GetProperty("Exception").GetSetMethod(true);
-        private static void SetJobException(Job job, Exception exception) => jobException.Invoke(job, new object[] { exception });
         #endregion
 
         /// <summary>
